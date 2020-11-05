@@ -349,7 +349,7 @@ pub fn Range(comptime T: type) type {
     return struct {
         start: T = 0,
         end: T = 0,
-        step: T = 0,
+        step: T = 1,
 
         pub fn next(it: *@This()) ?T {
             if (it.end <= it.start)
@@ -579,6 +579,12 @@ test "collect" {
     defer testing.allocator.free(collected);
 
     testing.expectEqualSlices(u8, "abcd", collected);
+
+    const collected_range = try range(usize, 0, 5) //
+        .call(collect, .{testing.allocator});
+    defer testing.allocator.free(collected_range);
+
+    testing.expectEqualSlices(usize, &[_]usize{ 0, 1, 2, 3, 4 }, collected_range);
 }
 
 /// Counts the number of iterations before an iterator returns `null`.
