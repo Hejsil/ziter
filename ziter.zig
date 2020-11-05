@@ -43,6 +43,17 @@ pub const LengthHint = struct {
         const max = hint.max orelse return null;
         return if (hint.min == max) max else null;
     }
+
+    pub fn add(a: LengthHint, b: LengthHint) LengthHint {
+        return .{
+            .min = a.min + b.min,
+            .max = blk: {
+                const a_max = a.max orelse break :blk null;
+                const b_max = b.max orelse break :blk null;
+                break :blk a_max + b_max;
+            },
+        };
+    }
 };
 
 /// You see, we don't have ufc and an iterator interface using free functions
@@ -57,7 +68,11 @@ pub const LengthHint = struct {
 ///     .call(deref, .{})
 ///     .call(filter, .{ fn(a: u8){ return a == 0; } });
 /// ```
-pub fn call_method(it: anytype, func: anytype, args: anytype) @TypeOf(@call(.{}, func, .{@TypeOf(it.*){}} ++ @as(@TypeOf(args), undefined))) {
+pub fn call_method(
+    it: anytype,
+    func: anytype,
+    args: anytype,
+) @TypeOf(@call(.{}, func, .{@TypeOf(it.*){}} ++ @as(@TypeOf(args), undefined))) {
     return @call(.{}, func, .{it.*} ++ args);
 }
 
@@ -75,16 +90,10 @@ pub fn ChainIt(comptime First: type, comptime Second: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
-            const first = it.first.len_hint();
-            const second = it.second.len_hint();
-            return .{
-                .min = first.min + second.min,
-                .max = blk: {
-                    const a = first.max orelse break :blk null;
-                    const b = second.max orelse break :blk null;
-                    break :blk a + b;
-                },
-            };
+            return LengthHint.add(
+                it.first.len_hint(),
+                it.second.len_hint(),
+            );
         }
 
         pub const call = call_method;
@@ -98,10 +107,13 @@ pub fn chain(first: anytype, second: anytype) ChainIt(@TypeOf(first), @TypeOf(se
 }
 
 test "chain" {
-    test_it(chain(span("abc"), span("def")).call(deref, .{}), .{ .min = 6, .max = 6 }, "abcdef");
-    test_it(chain(span(""), span("def")).call(deref, .{}), .{ .min = 3, .max = 3 }, "def");
-    test_it(chain(span("abc"), span("")).call(deref, .{}), .{ .min = 3, .max = 3 }, "abc");
-    test_it(chain(span(""), span("")).call(deref, .{}), .{ .min = 0, .max = 0 }, "");
+    const abc = deref(span("abc"));
+    const def = deref(span("def"));
+    const non = deref(span(""));
+    test_it(chain(abc, def), .{ .min = 6, .max = 6 }, "abcdef");
+    test_it(chain(non, def), .{ .min = 3, .max = 3 }, "def");
+    test_it(chain(abc, non), .{ .min = 3, .max = 3 }, "abc");
+    test_it(chain(non, non), .{ .min = 0, .max = 0 }, "");
 }
 
 pub fn DerefIt(comptime Child: type) type {
@@ -220,7 +232,9 @@ test "filter_map" {
             return i * 2;
         }
     };
-    test_it(range(u8, 0, 10).call(filter_map, .{F.even_double}), .{ .min = 0, .max = 10 }, &[_]u16{ 0, 4, 8, 12, 16 });
+    const i = range(u8, 0, 10) //
+        .call(filter_map, .{F.even_double});
+    test_it(i, .{ .min = 0, .max = 10 }, &[_]u16{ 0, 4, 8, 12, 16 });
 }
 
 pub fn FilterIt(comptime Context: type, comptime Child: type) type {
@@ -246,7 +260,10 @@ pub fn FilterIt(comptime Context: type, comptime Child: type) type {
 }
 
 /// Same as `filter_ex` but requires no context.
-pub fn filter(it: anytype, pred: fn (Result(@TypeOf(it))) bool) FilterIt(void, @TypeOf(it)) {
+pub fn filter(
+    it: anytype,
+    pred: fn (Result(@TypeOf(it))) bool,
+) FilterIt(void, @TypeOf(it)) {
     return filter_ex(it, {}, @ptrCast(fn (void, Result(@TypeOf(it))) bool, pred));
 }
 
@@ -261,9 +278,54 @@ pub fn filter_ex(
 }
 
 test "filter" {
-    test_it(span("a1b2").call(deref, .{}).call(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 4 }, "12");
-    test_it(span("a1b2").call(deref, .{}).call(filter, .{std.ascii.isAlpha}), .{ .min = 0, .max = 4 }, "ab");
-    test_it(span("aaabb").call(deref, .{}).call(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 5 }, "");
+    const s1 = span("a1b2").call(deref, .{});
+    const s2 = span("aaabb").call(deref, .{});
+    test_it(s1.call(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 4 }, "12");
+    test_it(s1.call(filter, .{std.ascii.isAlpha}), .{ .min = 0, .max = 4 }, "ab");
+    test_it(s2.call(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 5 }, "");
+}
+
+pub fn InterLeaveIt(comptime First: type, comptime Second: type) type {
+    return struct {
+        first: First = First{},
+        second: Second = Second{},
+        flag: enum { first, second } = .first,
+
+        pub fn next(it: *@This()) ?Result(First) {
+            defer it.flag = if (it.flag == .first) .second else .first;
+            return switch (it.flag) {
+                .first => it.first.next() orelse it.second.next(),
+                .second => it.second.next() orelse it.first.next(),
+            };
+        }
+
+        pub fn len_hint(it: @This()) LengthHint {
+            return LengthHint.add(
+                it.first.len_hint(),
+                it.second.len_hint(),
+            );
+        }
+
+        pub const call = call_method;
+    };
+}
+
+/// Creates an iterator switches between calling `first.next` and `second.next`.
+pub fn interleave(
+    first: anytype,
+    second: anytype,
+) InterLeaveIt(@TypeOf(first), @TypeOf(second)) {
+    return .{ .first = first, .second = second };
+}
+
+test "interleave" {
+    const abc = deref(span("abc"));
+    const def = deref(span("def"));
+    const non = deref(span(""));
+    test_it(interleave(abc, def), .{ .min = 6, .max = 6 }, "adbecf");
+    test_it(interleave(non, def), .{ .min = 3, .max = 3 }, "def");
+    test_it(interleave(abc, non), .{ .min = 3, .max = 3 }, "abc");
+    test_it(interleave(non, non), .{ .min = 0, .max = 0 }, "");
 }
 
 pub fn MapIt(comptime Context: type, comptime Child: type, comptime T: type) type {
@@ -285,20 +347,34 @@ pub fn MapIt(comptime Context: type, comptime Child: type, comptime T: type) typ
 }
 
 /// Same as `map_ex` but requires no context.
-pub fn map(it: anytype, transform: anytype) MapIt(void, @TypeOf(it), ReturnType(@TypeOf(transform))) {
+pub fn map(
+    it: anytype,
+    transform: anytype,
+) MapIt(void, @TypeOf(it), ReturnType(@TypeOf(transform))) {
     const Expect = fn (Result(@TypeOf(it))) ReturnType(@TypeOf(transform));
     const Transform = fn (void, Result(@TypeOf(it))) ReturnType(@TypeOf(transform));
     return map_ex(it, {}, @ptrCast(Transform, @as(Expect, transform)));
 }
 
 /// Creates an iterator that transforms all items using the `transform` function.
-pub fn map_ex(it: anytype, ctx: anytype, transform: anytype) MapIt(@TypeOf(ctx), @TypeOf(it), ReturnType(@TypeOf(transform))) {
+pub fn map_ex(
+    it: anytype,
+    ctx: anytype,
+    transform: anytype,
+) MapIt(@TypeOf(ctx), @TypeOf(it), ReturnType(@TypeOf(transform))) {
     return .{ .child = it, .ctx = ctx, .transform = transform };
 }
 
 test "map" {
-    test_it(span("abcd").call(deref, .{}).call(map, .{std.ascii.toUpper}), .{ .min = 4, .max = 4 }, "ABCD");
-    test_it(span("").call(deref, .{}).call(map, .{std.ascii.toUpper}), .{ .min = 0, .max = 0 }, "");
+    const m1 = span("abcd") //
+        .call(deref, .{}) //
+        .call(map, .{std.ascii.toUpper});
+    test_it(m1, .{ .min = 4, .max = 4 }, "ABCD");
+
+    const m2 = span("") //
+        .call(deref, .{}) //
+        .call(map, .{std.ascii.toUpper});
+    test_it(m2, .{ .min = 0, .max = 0 }, "");
 }
 
 pub fn PairIt(comptime Child: type) type {
@@ -445,7 +521,10 @@ pub fn skip(_it: anytype, _n: usize) @TypeOf(_it) {
 }
 
 test "skip" {
-    test_it(span("abcd").call(deref, .{}).call(skip, .{2}), .{ .min = 2, .max = 2 }, "cd");
+    const i = span("abcd") //
+        .call(deref, .{}) //
+        .call(skip, .{2});
+    test_it(i, .{ .min = 2, .max = 2 }, "cd");
 }
 
 pub fn TakeWhileIt(comptime Context: type, comptime Child: type) type {
@@ -466,7 +545,10 @@ pub fn TakeWhileIt(comptime Context: type, comptime Child: type) type {
 }
 
 /// Same as `take_while` but requires no context.
-pub fn take_while(it: anytype, pred: fn (Result(@TypeOf(it))) bool) TakeWhileIt(void, @TypeOf(it)) {
+pub fn take_while(
+    it: anytype,
+    pred: fn (Result(@TypeOf(it))) bool,
+) TakeWhileIt(void, @TypeOf(it)) {
     const F = fn (void, Result(@TypeOf(it))) bool;
     return take_while_ex(it, {}, @ptrCast(F, pred));
 }
@@ -483,7 +565,10 @@ pub fn take_while_ex(
 }
 
 test "take_while" {
-    test_it(span("abCD").call(deref, .{}).call(take_while, .{std.ascii.isLower}), .{ .min = 0, .max = 4 }, "ab");
+    const tw = span("abCD") //
+        .call(deref, .{}) //
+        .call(take_while, .{std.ascii.isLower});
+    test_it(tw, .{ .min = 0, .max = 4 }, "ab");
 }
 
 pub fn TakeIt(comptime Child: type) type {
@@ -511,9 +596,10 @@ pub fn take(it: anytype, n: usize) TakeIt(@TypeOf(it)) {
 }
 
 test "take" {
-    test_it(span("abCD").call(deref, .{}).call(take, .{1}), .{ .min = 1, .max = 1 }, "a");
-    test_it(span("abCD").call(deref, .{}).call(take, .{2}), .{ .min = 2, .max = 2 }, "ab");
-    test_it(span("abCD").call(deref, .{}).call(take, .{3}), .{ .min = 3, .max = 3 }, "abC");
+    const abCD = span("abCD").call(deref, .{});
+    test_it(abCD.call(take, .{1}), .{ .min = 1, .max = 1 }, "a");
+    test_it(abCD.call(take, .{2}), .{ .min = 2, .max = 2 }, "ab");
+    test_it(abCD.call(take, .{3}), .{ .min = 3, .max = 3 }, "abC");
 }
 
 /////////////////////////////////////////////////////////////////
@@ -527,7 +613,11 @@ pub fn all(it: anytype, pred: fn (Result(@TypeOf(it))) bool) bool {
 }
 
 /// Check that all items in an iterator matches a predicate.
-pub fn all_ex(_it: anytype, ctx: anytype, pred: fn (@TypeOf(ctx), Result(@TypeOf(_it))) bool) bool {
+pub fn all_ex(
+    _it: anytype,
+    ctx: anytype,
+    pred: fn (@TypeOf(ctx), Result(@TypeOf(_it))) bool,
+) bool {
     var it = _it;
     while (it.next()) |item| {
         if (!pred(ctx, item))
@@ -549,7 +639,11 @@ pub fn any(it: anytype, pred: fn (Result(@TypeOf(it))) bool) bool {
 }
 
 /// Check that any items in an iterator matches a predicate.
-pub fn any_ex(it: anytype, ctx: anytype, pred: fn (@TypeOf(ctx), Result(@TypeOf(it))) bool) bool {
+pub fn any_ex(
+    it: anytype,
+    ctx: anytype,
+    pred: fn (@TypeOf(ctx), Result(@TypeOf(it))) bool,
+) bool {
     return find_ex(it, ctx, pred) != null;
 }
 
@@ -558,7 +652,10 @@ test "any" {
     testing.expect(!span("AAA").call(deref, .{}).call(any, .{std.ascii.isLower}));
 }
 
-pub fn collect(_it: anytype, allocator: *mem.Allocator) mem.Allocator.Error![]Result(@TypeOf(_it)) {
+pub fn collect(
+    _it: anytype,
+    allocator: *mem.Allocator,
+) mem.Allocator.Error![]Result(@TypeOf(_it)) {
     var res = std.ArrayList(Result(@TypeOf(_it))).init(allocator);
     errdefer res.deinit();
 
@@ -630,8 +727,10 @@ pub fn find_ex(
 }
 
 test "find" {
-    testing.expect(span("aAA").call(deref, .{}).call(find, .{std.ascii.isLower}).? == 'a');
-    testing.expect(span("AAA").call(deref, .{}).call(find, .{std.ascii.isLower}) == null);
+    const aAA = span("aAA").call(deref, .{});
+    const AAA = span("AAA").call(deref, .{});
+    testing.expect(aAA.call(find, .{std.ascii.isLower}).? == 'a');
+    testing.expect(AAA.call(find, .{std.ascii.isLower}) == null);
 }
 
 /// Same as `fold_ex` but requires no context.
@@ -669,6 +768,8 @@ test "fold" {
         }
     }.add;
 
-    testing.expectEqual(@as(u8, 12), span(&[_]u8{ 2, 4, 6 }).call(deref, .{}).call(fold, .{ @as(u8, 0), add }));
-    testing.expectEqual(@as(u8, 0), span(&[_]u8{}).call(deref, .{}).call(fold, .{ @as(u8, 0), add }));
+    const r1 = range_ex(u8, 2, 8, 2);
+    const r2 = range(u8, 0, 0);
+    testing.expectEqual(@as(u8, 12), r1.call(fold, .{ @as(u8, 0), add }));
+    testing.expectEqual(@as(u8, 0), r2.call(fold, .{ @as(u8, 0), add }));
 }

@@ -2,7 +2,7 @@
 
 A iterator library for Zig.
 
-```
+```zig
 const std = @import("std");
 const it = @import("ziter");
 
