@@ -14,7 +14,8 @@ comptime {
 /// Tests that an iterator returns all the items in the `expected`
 /// slice, and no more.
 pub fn test_it(_it: anytype, hint: LengthHint, expected: anytype) void {
-    testing.expectEqual(hint, _it.len_hint());
+    if (@hasDecl(@TypeOf(_it), "len_hint"))
+        testing.expectEqual(hint, _it.len_hint());
 
     var it = _it;
     for (expected) |item|
@@ -36,8 +37,8 @@ pub fn Result(comptime It: type) type {
 }
 
 pub const LengthHint = struct {
-    min: usize,
-    max: ?usize,
+    min: usize = 0,
+    max: ?usize = null,
 
     pub fn len(hint: LengthHint) ?usize {
         const max = hint.max orelse return null;
@@ -89,6 +90,9 @@ pub fn Chain(comptime First: type, comptime Second: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(First, "len_hint") or !@hasDecl(Second, "len_hint"))
+                return .{};
+
             return LengthHint.add(
                 it.first.len_hint(),
                 it.second.len_hint(),
@@ -151,6 +155,9 @@ pub fn Enumerate(comptime I: type, comptime Child: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             return it.child.len_hint();
         }
 
@@ -181,6 +188,55 @@ test "enumerate" {
     }
 }
 
+pub fn ErrInner(comptime Child: type) type {
+    const err_union = @typeInfo(ReturnType(@TypeOf(Child.next))).ErrorUnion;
+    const Error = err_union.error_set;
+    const Res = @typeInfo(err_union.payload).Optional.child;
+
+    return struct {
+        child: Child = Child{},
+
+        pub fn next(it: *@This()) ?(Error!Res) {
+            const res = it.child.next() catch |err| return err;
+            return res orelse return null;
+        }
+
+        pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
+            return it.child.len_hint();
+        }
+
+        pub const call = call_method;
+    };
+}
+
+/// Takes an iterator that returns `Error!?T` and makes it into an iterator
+/// take returns `?(Error!T)`.
+pub fn err_inner(it: anytype) ErrInner(@TypeOf(it)) {
+    return .{ .child = it };
+}
+
+test "err_inner" {
+    const Dummy = struct {
+        const Error = error{A};
+
+        num: usize = 0,
+        fn next(it: *@This()) Error!?u8 {
+            defer it.num += 1;
+            switch (it.num) {
+                0 => return 0,
+                1 => return error.A,
+                else => return null,
+            }
+        }
+    };
+
+    const i = err_inner(Dummy{});
+    test_it(i, .{}, &[_](Dummy.Error!u8){ 0, error.A });
+}
+
 pub fn FilterMap(comptime Context: type, comptime Child: type, comptime T: type) type {
     return struct {
         child: Child = Child{},
@@ -196,6 +252,9 @@ pub fn FilterMap(comptime Context: type, comptime Child: type, comptime T: type)
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
 
@@ -250,6 +309,9 @@ pub fn Filter(comptime Context: type, comptime Child: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
 
@@ -298,6 +360,9 @@ pub fn InterLeave(comptime First: type, comptime Second: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(First, "len_hint") or !@hasDecl(Second, "len_hint"))
+                return .{};
+
             return LengthHint.add(
                 it.first.len_hint(),
                 it.second.len_hint(),
@@ -337,6 +402,9 @@ pub fn Map(comptime Context: type, comptime Child: type, comptime T: type) type 
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             return it.child.len_hint();
         }
 
@@ -386,6 +454,9 @@ pub fn Pair(comptime Child: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             const child = it.child.len_hint();
             return .{
                 .min = math.sub(usize, child.min, 1) catch 0,
@@ -472,6 +543,9 @@ pub fn Repeat(comptime Child: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             const child = it.reset.len_hint();
             const min = child.min;
             const max = child.max orelse std.math.maxInt(usize);
@@ -532,6 +606,9 @@ pub fn TakeWhile(comptime Context: type, comptime Child: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
     };
@@ -577,6 +654,9 @@ pub fn Take(comptime Child: type) type {
         }
 
         pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{ .max = it.n };
+
             return .{ .min = math.min(it.n, it.child.len_hint().min), .max = it.n };
         }
     };
@@ -592,6 +672,64 @@ test "take" {
     test_it(abCD.call(take, .{1}), .{ .min = 1, .max = 1 }, "a");
     test_it(abCD.call(take, .{2}), .{ .min = 2, .max = 2 }, "ab");
     test_it(abCD.call(take, .{3}), .{ .min = 3, .max = 3 }, "abC");
+}
+
+pub fn Unwrap(comptime Child: type) type {
+    const err_union = @typeInfo(Result(Child)).ErrorUnion;
+    const Error = err_union.error_set;
+    const Res = err_union.payload;
+
+    return struct {
+        child: Child = Child{},
+        last_err: Error!void = {},
+
+        pub fn next(it: *@This()) ?Res {
+            const errun = it.child.next() orelse return null;
+            return errun catch |err| {
+                it.last_err = err;
+                return null;
+            };
+        }
+
+        pub fn len_hint(it: @This()) LengthHint {
+            if (!@hasDecl(Child, "len_hint"))
+                return .{};
+
+            return it.child.len_hint();
+        }
+    };
+}
+
+/// Creates an iterator that returns `null` on the first error returned
+/// from the child iterator. The child iterator is expected to return
+/// `?(Error!T)`. The error returned will be stored in a field called
+/// `last_err`.
+pub fn unwrap(it: anytype) Unwrap(@TypeOf(it)) {
+    return .{ .child = it };
+}
+
+test "unwrap" {
+    const Dummy = struct {
+        const Error = error{A};
+
+        num: usize = 0,
+        fn next(it: *@This()) ?(Error!u8) {
+            defer it.num += 1;
+            switch (it.num) {
+                // Without all these `@as` we get:
+                // broken LLVM module found: Operand is null
+                //  call fastcc void @__zig_return_error(<null operand!>), !dbg !6394
+                0 => return @as(?(Error!u8), @as(Error!u8, 0)),
+                1 => return @as(?(Error!u8), @as(Error!u8, error.A)),
+                else => return null,
+            }
+        }
+    };
+
+    var i = unwrap(Dummy{});
+    testing.expectEqual(@as(?u8, 0), i.next());
+    testing.expectEqual(@as(?u8, null), i.next());
+    testing.expectEqual(@as(Dummy.Error!void, error.A), i.last_err);
 }
 
 /////////////////////////////////////////////////////////////////
