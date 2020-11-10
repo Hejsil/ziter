@@ -1,0 +1,21 @@
+name: CI
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2.3.4
+        with:
+          submodules: recursive
+      - uses: goto-bus-stop/setup-zig@v1.2.5
+        with:
+          version: 0.7.0
+      - run: zig test ziter.zig
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2.3.4
+      - uses: goto-bus-stop/setup-zig@v1.2.5
+        with:
+          version: 0.7.0
+      - run: zig fmt --check .
