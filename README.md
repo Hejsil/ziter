@@ -12,7 +12,7 @@ fn is_div_by_3(n: usize) bool { return n % 3 == 0; }
 
 test "" {
     const result = it.range(usize, 0, 100)
-        .call(it.pair, .{})
+        .call(it.sliding_window, .{2})
         .call(it.map, .{add_pair})
         .call(it.filter, .{is_div_by_3})
         .call(it.fold, .{@as(usize, 0), add});
