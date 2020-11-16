@@ -777,6 +777,8 @@ pub fn Unwrap(comptime Child: type) type {
 
             return it.child.len_hint();
         }
+
+        pub const call = call_method;
     };
 }
 
