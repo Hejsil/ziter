@@ -7,14 +7,14 @@ const testing = std.testing;
 
 /// Tests that an iterator returns all the items in the `expected`
 /// slice, and no more.
-pub fn test_it(_it: anytype, hint: LengthHint, expected: anytype) void {
+pub fn testIt(_it: anytype, hint: LengthHint, expected: anytype) !void {
     if (@hasDecl(@TypeOf(_it), "len_hint"))
-        testing.expectEqual(hint, _it.len_hint());
+        try testing.expectEqual(hint, _it.len_hint());
 
     var it = _it;
     for (expected) |item|
-        testing.expectEqual(item, it.next().?);
-    testing.expect(it.next() == null);
+        try testing.expectEqual(item, it.next().?);
+    try testing.expect(it.next() == null);
 }
 
 fn ReturnType(comptime F: type) type {
@@ -62,7 +62,7 @@ pub const LengthHint = struct {
 /// const it = span("aaa")
 ///     .pipe(filter, .{ fn(a: u8){ return a == 0; } });
 /// ```
-pub fn pipe_method(
+pub fn pipeMethod(
     it: anytype,
     func: anytype,
     args: anytype,
@@ -93,7 +93,7 @@ pub fn Chain(comptime First: type, comptime Second: type) type {
             );
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -107,10 +107,10 @@ test "chain" {
     const abc = span("abc");
     const def = span("def");
     const non = span("");
-    test_it(chain(abc, def), .{ .min = 6, .max = 6 }, "abcdef");
-    test_it(chain(non, def), .{ .min = 3, .max = 3 }, "def");
-    test_it(chain(abc, non), .{ .min = 3, .max = 3 }, "abc");
-    test_it(chain(non, non), .{ .min = 0, .max = 0 }, "");
+    try testIt(chain(abc, def), .{ .min = 6, .max = 6 }, "abcdef");
+    try testIt(chain(non, def), .{ .min = 3, .max = 3 }, "def");
+    try testIt(chain(abc, non), .{ .min = 3, .max = 3 }, "abc");
+    try testIt(chain(non, non), .{ .min = 0, .max = 0 }, "");
 }
 
 pub fn Deref(comptime Child: type) type {
@@ -120,15 +120,15 @@ pub fn Deref(comptime Child: type) type {
 /// Creates an iterator which derefs all of the items it iterates over.
 pub fn deref(it: anytype) Deref(@TypeOf(it)) {
     const It = @TypeOf(it);
-    return map(it, struct {
-        fn transform(ptr: Result(It)) Result(Deref(It)) {
+    return mapEx(it, {}, struct {
+        fn transform(_: void, ptr: Result(It)) Result(Deref(It)) {
             return ptr.*;
         }
     }.transform);
 }
 
 test "deref" {
-    test_it(span_by_ref("abcd").pipe(deref, .{}), .{ .min = 4, .max = 4 }, "abcd");
+    try testIt(spanByRef("abcd").pipe(deref, .{}), .{ .min = 4, .max = 4 }, "abcd");
 }
 
 pub fn Enumerate(comptime I: type, comptime Child: type) type {
@@ -155,17 +155,17 @@ pub fn Enumerate(comptime I: type, comptime Child: type) type {
             return it.child.len_hint();
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
-/// Same as `enumerate_ex` but with `usize` passed as the second parameter.
+/// Same as `enumerateEx` but with `usize` passed as the second parameter.
 pub fn enumerate(it: anytype) Enumerate(usize, @TypeOf(it)) {
-    return enumerate_ex(it, usize);
+    return enumerateEx(it, usize);
 }
 
 /// Creates an iterator that gives the item index as well as the item.
-pub fn enumerate_ex(it: anytype, comptime I: type) Enumerate(I, @TypeOf(it)) {
+pub fn enumerateEx(it: anytype, comptime I: type) Enumerate(I, @TypeOf(it)) {
     return .{ .child = it };
 }
 
@@ -173,12 +173,12 @@ test "enumerate" {
     var it = span("ab") //
         .pipe(enumerate, .{});
 
-    testing.expectEqual(LengthHint{ .min = 2, .max = 2 }, it.len_hint());
+    try testing.expectEqual(LengthHint{ .min = 2, .max = 2 }, it.len_hint());
 
     var i: usize = 0;
     while (it.next()) |item| : (i += 1) {
-        testing.expectEqual(@as(usize, i), item.index);
-        testing.expectEqual(@as(u8, "ab"[i]), item.item);
+        try testing.expectEqual(@as(usize, i), item.index);
+        try testing.expectEqual(@as(u8, "ab"[i]), item.item);
     }
 }
 
@@ -202,17 +202,17 @@ pub fn ErrInner(comptime Child: type) type {
             return it.child.len_hint();
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
 /// Takes an iterator that returns `Error!?T` and makes it into an iterator
 /// take returns `?(Error!T)`.
-pub fn err_inner(it: anytype) ErrInner(@TypeOf(it)) {
+pub fn errInner(it: anytype) ErrInner(@TypeOf(it)) {
     return .{ .child = it };
 }
 
-test "err_inner" {
+test "errInner" {
     const Dummy = struct {
         const Error = error{A};
 
@@ -227,8 +227,8 @@ test "err_inner" {
         }
     };
 
-    const i = err_inner(Dummy{});
-    test_it(i, .{}, &[_](Dummy.Error!u8){ 0, error.A });
+    const i = errInner(Dummy{});
+    try testIt(i, .{}, &[_](Dummy.Error!u8){ 0, error.A });
 }
 
 pub fn FilterMap(comptime Context: type, comptime Child: type, comptime T: type) type {
@@ -252,22 +252,26 @@ pub fn FilterMap(comptime Context: type, comptime Child: type, comptime T: type)
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
-/// Same as `filter_map_ex` but requires no context.
-pub fn filter_map(
+/// Same as `filterMapEx` but requires no context.
+pub fn filterMap(
     it: anytype,
     transform: anytype,
-) FilterMap(void, @TypeOf(it), ReturnTypeOpt(@TypeOf(transform))) {
-    const Expect = fn (Result(@TypeOf(it))) ReturnType(@TypeOf(transform));
-    const Transform = fn (void, Result(@TypeOf(it))) ReturnType(@TypeOf(transform));
-    return filter_map_ex(it, {}, @ptrCast(Transform, @as(Expect, transform)));
+) FilterMap(@TypeOf(transform), @TypeOf(it), ReturnTypeOpt(@TypeOf(transform))) {
+    const Res = Result(@TypeOf(it));
+    const Trans = @TypeOf(transform);
+    return filterMapEx(it, transform, struct {
+        fn wrapper(trans: Trans, item: Res) ReturnType(Trans) {
+            return trans(item);
+        }
+    }.wrapper);
 }
 
 /// Creates an iterator that transforms and filters out items the `transform` function.
-pub fn filter_map_ex(
+pub fn filterMapEx(
     it: anytype,
     ctx: anytype,
     transform: anytype,
@@ -275,7 +279,7 @@ pub fn filter_map_ex(
     return .{ .child = it, .ctx = ctx, .transform = transform };
 }
 
-test "filter_map" {
+test "filterMap" {
     const F = struct {
         fn even_double(i: u8) ?u16 {
             if (i % 2 != 0)
@@ -284,8 +288,8 @@ test "filter_map" {
         }
     };
     const i = range(u8, 0, 10) //
-        .pipe(filter_map, .{F.even_double});
-    test_it(i, .{ .min = 0, .max = 10 }, &[_]u16{ 0, 4, 8, 12, 16 });
+        .pipe(filterMap, .{F.even_double});
+    try testIt(i, .{ .min = 0, .max = 10 }, &[_]u16{ 0, 4, 8, 12, 16 });
 }
 
 pub fn Filter(comptime Context: type, comptime Child: type) type {
@@ -309,21 +313,27 @@ pub fn Filter(comptime Context: type, comptime Child: type) type {
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
-/// Same as `filter_ex` but requires no context.
+/// Same as `filterEx` but requires no context.
 pub fn filter(
     it: anytype,
     pred: fn (Result(@TypeOf(it))) bool,
-) Filter(void, @TypeOf(it)) {
-    return filter_ex(it, {}, @ptrCast(fn (void, Result(@TypeOf(it))) bool, pred));
+) Filter(fn (Result(@TypeOf(it))) bool, @TypeOf(it)) {
+    const Res = Result(@TypeOf(it));
+    const Pred = fn (Res) bool;
+    return filterEx(it, pred, struct {
+        fn wrapper(p: Pred, item: Res) bool {
+            return p(item);
+        }
+    }.wrapper);
 }
 
 /// Creates an iterator that filters out items that does not match
 /// the predicate `pred`.
-pub fn filter_ex(
+pub fn filterEx(
     it: anytype,
     ctx: anytype,
     pred: fn (@TypeOf(ctx), Result(@TypeOf(it))) bool,
@@ -334,9 +344,9 @@ pub fn filter_ex(
 test "filter" {
     const s1 = span("a1b2");
     const s2 = span("aaabb");
-    test_it(s1.pipe(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 4 }, "12");
-    test_it(s1.pipe(filter, .{std.ascii.isAlpha}), .{ .min = 0, .max = 4 }, "ab");
-    test_it(s2.pipe(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 5 }, "");
+    try testIt(s1.pipe(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 4 }, "12");
+    try testIt(s1.pipe(filter, .{std.ascii.isAlpha}), .{ .min = 0, .max = 4 }, "ab");
+    try testIt(s2.pipe(filter, .{std.ascii.isDigit}), .{ .min = 0, .max = 5 }, "");
 }
 
 pub fn InterLeave(comptime First: type, comptime Second: type) type {
@@ -363,7 +373,7 @@ pub fn InterLeave(comptime First: type, comptime Second: type) type {
             );
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -379,10 +389,10 @@ test "interleave" {
     const abc = span("abc");
     const def = span("def");
     const non = span("");
-    test_it(interleave(abc, def), .{ .min = 6, .max = 6 }, "adbecf");
-    test_it(interleave(non, def), .{ .min = 3, .max = 3 }, "def");
-    test_it(interleave(abc, non), .{ .min = 3, .max = 3 }, "abc");
-    test_it(interleave(non, non), .{ .min = 0, .max = 0 }, "");
+    try testIt(interleave(abc, def), .{ .min = 6, .max = 6 }, "adbecf");
+    try testIt(interleave(non, def), .{ .min = 3, .max = 3 }, "def");
+    try testIt(interleave(abc, non), .{ .min = 3, .max = 3 }, "abc");
+    try testIt(interleave(non, non), .{ .min = 0, .max = 0 }, "");
 }
 
 pub fn Map(comptime Context: type, comptime Child: type, comptime T: type) type {
@@ -402,22 +412,26 @@ pub fn Map(comptime Context: type, comptime Child: type, comptime T: type) type 
             return it.child.len_hint();
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
-/// Same as `map_ex` but requires no context.
+/// Same as `mapEx` but requires no context.
 pub fn map(
     it: anytype,
     transform: anytype,
-) Map(void, @TypeOf(it), ReturnType(@TypeOf(transform))) {
-    const Expect = fn (Result(@TypeOf(it))) ReturnType(@TypeOf(transform));
-    const Transform = fn (void, Result(@TypeOf(it))) ReturnType(@TypeOf(transform));
-    return map_ex(it, {}, @ptrCast(Transform, @as(Expect, transform)));
+) Map(@TypeOf(transform), @TypeOf(it), ReturnType(@TypeOf(transform))) {
+    const Res = Result(@TypeOf(it));
+    const Trans = @TypeOf(transform);
+    return mapEx(it, transform, struct {
+        fn wrapper(trans: Trans, item: Res) ReturnType(Trans) {
+            return trans(item);
+        }
+    }.wrapper);
 }
 
 /// Creates an iterator that transforms all items using the `transform` function.
-pub fn map_ex(
+pub fn mapEx(
     it: anytype,
     ctx: anytype,
     transform: anytype,
@@ -428,11 +442,11 @@ pub fn map_ex(
 test "map" {
     const m1 = span("abcd") //
         .pipe(map, .{std.ascii.toUpper});
-    test_it(m1, .{ .min = 4, .max = 4 }, "ABCD");
+    try testIt(m1, .{ .min = 4, .max = 4 }, "ABCD");
 
     const m2 = span("") //
         .pipe(map, .{std.ascii.toUpper});
-    test_it(m2, .{ .min = 0, .max = 0 }, "");
+    try testIt(m2, .{ .min = 0, .max = 0 }, "");
 }
 
 pub fn SlidingWindow(comptime Child: type, comptime window: usize) type {
@@ -470,7 +484,7 @@ pub fn SlidingWindow(comptime Child: type, comptime window: usize) type {
             };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -479,22 +493,22 @@ pub fn SlidingWindow(comptime Child: type, comptime window: usize) type {
 /// that window along:
 /// ```
 /// span("abcde")
-///     .pipe(sliding_window, {3}) = "abc"
+///     .pipe(slidingWindow, {3}) = "abc"
 ///                                  "bcd"
 ///                                  "cde"
 /// ```
-pub fn sliding_window(it: anytype, comptime window: usize) SlidingWindow(@TypeOf(it), window) {
+pub fn slidingWindow(it: anytype, comptime window: usize) SlidingWindow(@TypeOf(it), window) {
     return .{ .child = it };
 }
 
-test "sliding_window" {
+test "slidingWindow" {
     const s1 = span("abcd") //
-        .pipe(sliding_window, .{2});
-    test_it(s1, .{ .min = 3, .max = 3 }, [_][2]u8{ "ab".*, "bc".*, "cd".* });
+        .pipe(slidingWindow, .{2});
+    try testIt(s1, .{ .min = 3, .max = 3 }, [_][2]u8{ "ab".*, "bc".*, "cd".* });
 
     const s2 = span("abcd") //
-        .pipe(sliding_window, .{3});
-    test_it(s2, .{ .min = 2, .max = 2 }, [_][3]u8{ "abc".*, "bcd".* });
+        .pipe(slidingWindow, .{3});
+    try testIt(s2, .{ .min = 2, .max = 2 }, [_][3]u8{ "abc".*, "bcd".* });
 }
 
 pub fn Range(comptime T: type) type {
@@ -517,26 +531,26 @@ pub fn Range(comptime T: type) type {
             return .{ .min = len, .max = len };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
-/// Same as `range_ex` with 1 passed to the `step` paramter.
+/// Same as `rangeEx` with 1 passed to the `step` paramter.
 pub fn range(comptime T: type, start: T, end: T) Range(T) {
-    return range_ex(T, start, end, 1);
+    return rangeEx(T, start, end, 1);
 }
 
 /// Creates an iterator that iterates from `start` to `end` exclusively
 /// with a step size of `step`.
-pub fn range_ex(comptime T: type, start: T, end: T, step: T) Range(T) {
+pub fn rangeEx(comptime T: type, start: T, end: T, step: T) Range(T) {
     debug.assert(start <= end and step != 0);
     return .{ .start = start, .end = end, .step = step };
 }
 
 test "range" {
-    test_it(range(u8, 'a', 'd'), .{ .min = 3, .max = 3 }, "abc");
-    test_it(range_ex(u8, 'a', 'd', 2), .{ .min = 2, .max = 2 }, "ac");
-    test_it(range_ex(u8, 'a', 'd', 3), .{ .min = 1, .max = 1 }, "a");
+    try testIt(range(u8, 'a', 'd'), .{ .min = 3, .max = 3 }, "abc");
+    try testIt(rangeEx(u8, 'a', 'd', 2), .{ .min = 2, .max = 2 }, "ac");
+    try testIt(rangeEx(u8, 'a', 'd', 3), .{ .min = 1, .max = 1 }, "a");
 }
 
 pub fn Repeat(comptime Child: type) type {
@@ -565,7 +579,7 @@ pub fn Repeat(comptime Child: type) type {
             };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -580,13 +594,13 @@ test "repeat" {
     var it = span("ab") //
         .pipe(repeat, .{});
 
-    testing.expectEqual(LengthHint{ .min = 2, .max = null }, it.len_hint());
-    testing.expect(it.next().? == 'a');
-    testing.expect(it.next().? == 'b');
-    testing.expect(it.next().? == 'a');
-    testing.expect(it.next().? == 'b');
-    testing.expect(it.next().? == 'a');
-    testing.expect(it.next().? == 'b');
+    try testing.expectEqual(LengthHint{ .min = 2, .max = null }, it.len_hint());
+    try testing.expect(it.next().? == 'a');
+    try testing.expect(it.next().? == 'b');
+    try testing.expect(it.next().? == 'a');
+    try testing.expect(it.next().? == 'b');
+    try testing.expect(it.next().? == 'a');
+    try testing.expect(it.next().? == 'b');
 }
 
 pub fn Span(comptime S: type) type {
@@ -615,48 +629,48 @@ pub fn Span(comptime S: type) type {
             return .{ .min = it.span.len, .max = it.span.len };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
 /// Creates an iterator that iterates over all the items of an array or slice.
 pub fn span(s: anytype) Deref(Span(mem.Span(@TypeOf(s)))) {
-    return deref(span_by_ref(s));
+    return deref(spanByRef(s));
 }
 
 test "span" {
     const items = "abcd";
-    test_it(span(items[0..]), .{ .min = 4, .max = 4 }, items[0..]);
-    test_it(span(items[1..]), .{ .min = 3, .max = 3 }, items[1..]);
-    test_it(span(items[2..]), .{ .min = 2, .max = 2 }, items[2..]);
-    test_it(span(items[3..]), .{ .min = 1, .max = 1 }, items[3..]);
-    test_it(span(items[4..]), .{ .min = 0, .max = 0 }, items[4..]);
+    try testIt(span(items[0..]), .{ .min = 4, .max = 4 }, items[0..]);
+    try testIt(span(items[1..]), .{ .min = 3, .max = 3 }, items[1..]);
+    try testIt(span(items[2..]), .{ .min = 2, .max = 2 }, items[2..]);
+    try testIt(span(items[3..]), .{ .min = 1, .max = 1 }, items[3..]);
+    try testIt(span(items[4..]), .{ .min = 0, .max = 0 }, items[4..]);
 }
 
 /// Creates an iterator that iterates over all the items of an array or slice
 /// by reference.
-pub fn span_by_ref(s: anytype) Span(mem.Span(@TypeOf(s))) {
+pub fn spanByRef(s: anytype) Span(mem.Span(@TypeOf(s))) {
     return .{ .span = mem.span(s) };
 }
 
 comptime {
     const c = "a".*;
     var v = "a".*;
-    var sc = span_by_ref(&c);
-    var sv = span_by_ref(&v);
+    var sc = spanByRef(&c);
+    var sv = spanByRef(&v);
 
     debug.assert(@TypeOf(sc.next()) == ?*const u8);
     debug.assert(@TypeOf(sv.next()) == ?*u8);
 }
 
-test "span_by_ref" {
+test "spanByRef" {
     const items = "abcd";
     const refs = &[_]*const u8{ &items[0], &items[1], &items[2], &items[3] };
-    test_it(span_by_ref(items[0..]), .{ .min = 4, .max = 4 }, refs[0..]);
-    test_it(span_by_ref(items[1..]), .{ .min = 3, .max = 3 }, refs[1..]);
-    test_it(span_by_ref(items[2..]), .{ .min = 2, .max = 2 }, refs[2..]);
-    test_it(span_by_ref(items[3..]), .{ .min = 1, .max = 1 }, refs[3..]);
-    test_it(span_by_ref(items[4..]), .{ .min = 0, .max = 0 }, refs[4..]);
+    try testIt(spanByRef(items[0..]), .{ .min = 4, .max = 4 }, refs[0..]);
+    try testIt(spanByRef(items[1..]), .{ .min = 3, .max = 3 }, refs[1..]);
+    try testIt(spanByRef(items[2..]), .{ .min = 2, .max = 2 }, refs[2..]);
+    try testIt(spanByRef(items[3..]), .{ .min = 1, .max = 1 }, refs[3..]);
+    try testIt(spanByRef(items[4..]), .{ .min = 0, .max = 0 }, refs[4..]);
 }
 
 /// Skips `n` iterations of `it` and return it.
@@ -671,7 +685,7 @@ pub fn skip(_it: anytype, _n: usize) @TypeOf(_it) {
 test "skip" {
     const i = span("abcd") //
         .pipe(skip, .{2});
-    test_it(i, .{ .min = 2, .max = 2 }, "cd");
+    try testIt(i, .{ .min = 2, .max = 2 }, "cd");
 }
 
 pub fn TakeWhile(comptime Context: type, comptime Child: type) type {
@@ -692,23 +706,28 @@ pub fn TakeWhile(comptime Context: type, comptime Child: type) type {
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
-/// Same as `take_while` but requires no context.
-pub fn take_while(
+/// Same as `takeWhile` but requires no context.
+pub fn takeWhile(
     it: anytype,
     pred: fn (Result(@TypeOf(it))) bool,
-) TakeWhile(void, @TypeOf(it)) {
-    const F = fn (void, Result(@TypeOf(it))) bool;
-    return take_while_ex(it, {}, @ptrCast(F, pred));
+) TakeWhile(fn (Result(@TypeOf(it))) bool, @TypeOf(it)) {
+    const Res = Result(@TypeOf(it));
+    const Pred = fn (Res) bool;
+    return takeWhileEx(it, pred, struct {
+        fn wrapper(p: Pred, item: Res) bool {
+            return p(item);
+        }
+    }.wrapper);
 }
 
 /// Creates an iterator that takes values from the child iterator so long
 /// as they matches the predicate `pred`. When the predicate is no longer
 /// satisfied, the iterator will return null.
-pub fn take_while_ex(
+pub fn takeWhileEx(
     it: anytype,
     ctx: anytype,
     pred: fn (@TypeOf(ctx), Result(@TypeOf(it))) bool,
@@ -716,10 +735,10 @@ pub fn take_while_ex(
     return .{ .child = it, .ctx = ctx, .pred = pred };
 }
 
-test "take_while" {
+test "takeWhile" {
     const tw = span("abCD") //
-        .pipe(take_while, .{std.ascii.isLower});
-    test_it(tw, .{ .min = 0, .max = 4 }, "ab");
+        .pipe(takeWhile, .{std.ascii.isLower});
+    try testIt(tw, .{ .min = 0, .max = 4 }, "ab");
 }
 
 pub fn Take(comptime Child: type) type {
@@ -742,7 +761,7 @@ pub fn Take(comptime Child: type) type {
             return .{ .min = math.min(it.n, it.child.len_hint().min), .max = it.n };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -753,9 +772,9 @@ pub fn take(it: anytype, n: usize) Take(@TypeOf(it)) {
 
 test "take" {
     const abCD = span("abCD");
-    test_it(abCD.pipe(take, .{1}), .{ .min = 1, .max = 1 }, "a");
-    test_it(abCD.pipe(take, .{2}), .{ .min = 2, .max = 2 }, "ab");
-    test_it(abCD.pipe(take, .{3}), .{ .min = 3, .max = 3 }, "abC");
+    try testIt(abCD.pipe(take, .{1}), .{ .min = 1, .max = 1 }, "a");
+    try testIt(abCD.pipe(take, .{2}), .{ .min = 2, .max = 2 }, "ab");
+    try testIt(abCD.pipe(take, .{3}), .{ .min = 3, .max = 3 }, "abC");
 }
 
 pub fn Dedup(comptime Child: type) type {
@@ -789,7 +808,7 @@ pub fn Dedup(comptime Child: type) type {
             return .{ .min = 0, .max = it.child.len_hint().max };
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -797,7 +816,7 @@ pub fn Dedup(comptime Child: type) type {
 /// `eql` to determin if two results are identical.
 pub fn dedup(it: anytype) Dedup(@TypeOf(it)) {
     const Res = Result(@TypeOf(it));
-    return dedup_ex(it, struct {
+    return dedupEx(it, struct {
         fn eql(a: Res, b: Res) bool {
             return a == b;
         }
@@ -806,7 +825,7 @@ pub fn dedup(it: anytype) Dedup(@TypeOf(it)) {
 
 /// Removes dublicates from consectutive identical results using
 /// `eql` to determin if two results are identical.
-pub fn dedup_ex(
+pub fn dedupEx(
     it: anytype,
     eql: fn (Result(@TypeOf(it)), Result(@TypeOf(it))) bool,
 ) Dedup(@TypeOf(it)) {
@@ -816,11 +835,11 @@ pub fn dedup_ex(
 test "dedup" {
     const dd = span("aaabbcccdd") //
         .pipe(dedup, .{});
-    test_it(dd, .{ .min = 0, .max = 10 }, "abcd");
+    try testIt(dd, .{ .min = 0, .max = 10 }, "abcd");
 
     const dd2 = span(&[_][]const u8{ "aa", "AA", "ba", "BA" }) //
-        .pipe(dedup_ex, .{std.ascii.eqlIgnoreCase});
-    test_it(dd2, .{ .min = 0, .max = 4 }, &[_][]const u8{ "aa", "ba" });
+        .pipe(dedupEx, .{std.ascii.eqlIgnoreCase});
+    try testIt(dd2, .{ .min = 0, .max = 4 }, &[_][]const u8{ "aa", "ba" });
 }
 
 pub fn Unwrap(comptime Child: type) type {
@@ -847,7 +866,7 @@ pub fn Unwrap(comptime Child: type) type {
             return it.child.len_hint();
         }
 
-        pub const pipe = pipe_method;
+        pub const pipe = pipeMethod;
     };
 }
 
@@ -878,23 +897,28 @@ test "unwrap" {
     };
 
     var i = unwrap(Dummy{});
-    testing.expectEqual(@as(?u8, 0), i.next());
-    testing.expectEqual(@as(?u8, null), i.next());
-    testing.expectEqual(@as(Dummy.Error!void, error.A), i.last_err);
+    try testing.expectEqual(@as(?u8, 0), i.next());
+    try testing.expectEqual(@as(?u8, null), i.next());
+    try testing.expectEqual(@as(Dummy.Error!void, error.A), i.last_err);
 }
 
 /////////////////////////////////////////////////////////////////
 // The functions below iterates over iterators to get a result //
 /////////////////////////////////////////////////////////////////
 
-/// Same as `all_ex` but requires no context.
+/// Same as `allEx` but requires no context.
 pub fn all(it: anytype, pred: fn (Result(@TypeOf(it))) bool) bool {
-    const F = fn (void, Result(@TypeOf(it))) bool;
-    return all_ex(it, {}, @ptrCast(F, pred));
+    const Res = Result(@TypeOf(it));
+    const Pred = fn (Res) bool;
+    return allEx(it, pred, struct {
+        fn wrapper(p: Pred, res: Res) bool {
+            return p(res);
+        }
+    }.wrapper);
 }
 
 /// Check that all items in an iterator matches a predicate.
-pub fn all_ex(
+pub fn allEx(
     _it: anytype,
     ctx: anytype,
     pred: fn (@TypeOf(ctx), Result(@TypeOf(_it))) bool,
@@ -909,28 +933,33 @@ pub fn all_ex(
 }
 
 test "all" {
-    testing.expect(span("aaa").pipe(all, .{std.ascii.isLower}));
-    testing.expect(!span("Aaa").pipe(all, .{std.ascii.isLower}));
+    try testing.expect(span("aaa").pipe(all, .{std.ascii.isLower}));
+    try testing.expect(!span("Aaa").pipe(all, .{std.ascii.isLower}));
 }
 
-/// Same as `any_ex` but requires no context.
+/// Same as `anyEx` but requires no context.
 pub fn any(it: anytype, pred: fn (Result(@TypeOf(it))) bool) bool {
-    const F = fn (void, Result(@TypeOf(it))) bool;
-    return any_ex(it, {}, @ptrCast(F, pred));
+    const Res = Result(@TypeOf(it));
+    const Pred = fn (Res) bool;
+    return anyEx(it, pred, struct {
+        fn wrapper(p: Pred, res: Res) bool {
+            return p(res);
+        }
+    }.wrapper);
 }
 
 /// Check that any items in an iterator matches a predicate.
-pub fn any_ex(
+pub fn anyEx(
     it: anytype,
     ctx: anytype,
     pred: fn (@TypeOf(ctx), Result(@TypeOf(it))) bool,
 ) bool {
-    return find_ex(it, ctx, pred) != null;
+    return findEx(it, ctx, pred) != null;
 }
 
 test "any" {
-    testing.expect(span("aAA").pipe(any, .{std.ascii.isLower}));
-    testing.expect(!span("AAA").pipe(any, .{std.ascii.isLower}));
+    try testing.expect(span("aAA").pipe(any, .{std.ascii.isLower}));
+    try testing.expect(!span("AAA").pipe(any, .{std.ascii.isLower}));
 }
 
 pub fn collect(
@@ -955,13 +984,13 @@ test "collect" {
         .pipe(collect, .{testing.allocator});
     defer testing.allocator.free(collected);
 
-    testing.expectEqualSlices(u8, "abcd", collected);
+    try testing.expectEqualSlices(u8, "abcd", collected);
 
     const collected_range = try range(usize, 0, 5) //
         .pipe(collect, .{testing.allocator});
     defer testing.allocator.free(collected_range);
 
-    testing.expectEqualSlices(usize, &[_]usize{ 0, 1, 2, 3, 4 }, collected_range);
+    try testing.expectEqualSlices(usize, &[_]usize{ 0, 1, 2, 3, 4 }, collected_range);
 }
 
 /// Counts the number of iterations before an iterator returns `null`.
@@ -980,19 +1009,24 @@ pub fn count(_it: anytype) usize {
 }
 
 test "count" {
-    testing.expectEqual(@as(usize, 0), span("").pipe(count, .{}));
-    testing.expectEqual(@as(usize, 1), span("a").pipe(count, .{}));
-    testing.expectEqual(@as(usize, 2), span("aa").pipe(count, .{}));
+    try testing.expectEqual(@as(usize, 0), span("").pipe(count, .{}));
+    try testing.expectEqual(@as(usize, 1), span("a").pipe(count, .{}));
+    try testing.expectEqual(@as(usize, 2), span("aa").pipe(count, .{}));
 }
 
-/// Same as `find_ex` but requires no context.
+/// Same as `findEx` but requires no context.
 pub fn find(it: anytype, pred: fn (Result(@TypeOf(it))) bool) ?Result(@TypeOf(it)) {
-    const F = fn (void, Result(@TypeOf(it))) bool;
-    return find_ex(it, {}, @ptrCast(F, pred));
+    const Res = Result(@TypeOf(it));
+    const Pred = fn (Res) bool;
+    return findEx(it, pred, struct {
+        fn wrapper(p: Pred, res: Res) bool {
+            return p(res);
+        }
+    }.wrapper);
 }
 
 /// Gets the first item in an iterator that satiesfies the predicate.
-pub fn find_ex(
+pub fn findEx(
     _it: anytype,
     ctx: anytype,
     pred: fn (@TypeOf(ctx), Result(@TypeOf(_it))) bool,
@@ -1009,25 +1043,31 @@ pub fn find_ex(
 test "find" {
     const aAA = span("aAA");
     const AAA = span("AAA");
-    testing.expect(aAA.pipe(find, .{std.ascii.isLower}).? == 'a');
-    testing.expect(AAA.pipe(find, .{std.ascii.isLower}) == null);
+    try testing.expect(aAA.pipe(find, .{std.ascii.isLower}).? == 'a');
+    try testing.expect(AAA.pipe(find, .{std.ascii.isLower}) == null);
 }
 
-/// Same as `fold_ex` but requires no context.
+/// Same as `foldEx` but requires no context.
 pub fn fold(
     it: anytype,
     init: anytype,
     f: fn (@TypeOf(init), Result(@TypeOf(it))) @TypeOf(init),
 ) @TypeOf(init) {
-    const F = fn (void, @TypeOf(init), Result(@TypeOf(it))) @TypeOf(init);
-    return fold_ex(it, init, {}, @ptrCast(F, f));
+    const Res = Result(@TypeOf(it));
+    const Init = @TypeOf(init);
+    const Func = fn (Init, Res) Init;
+    return foldEx(it, init, f, struct {
+        fn wrapper(func: Func, acc: Init, item: Res) Init {
+            return func(acc, item);
+        }
+    }.wrapper);
 }
 
 /// Iterates over an iterator to get a single resulting value. This result is aquired
 /// by starting with the value of `init` and calling the function `f` on all result +
 /// item pairs, reassing the result to the return value of `f` on each iteration. Once
 /// all items have been iterated over the result is returned.
-pub fn fold_ex(
+pub fn foldEx(
     _it: anytype,
     init: anytype,
     ctx: anytype,
@@ -1048,10 +1088,10 @@ test "fold" {
         }
     }.add;
 
-    const r1 = range_ex(u8, 2, 8, 2);
+    const r1 = rangeEx(u8, 2, 8, 2);
     const r2 = range(u8, 0, 0);
-    testing.expectEqual(@as(u8, 12), r1.pipe(fold, .{ @as(u8, 0), add }));
-    testing.expectEqual(@as(u8, 0), r2.pipe(fold, .{ @as(u8, 0), add }));
+    try testing.expectEqual(@as(u8, 12), r1.pipe(fold, .{ @as(u8, 0), add }));
+    try testing.expectEqual(@as(u8, 0), r2.pipe(fold, .{ @as(u8, 0), add }));
 }
 
 /////////////////////////////////////////////////////
@@ -1070,9 +1110,9 @@ test "mem.split" {
     }.eql;
 
     const it = take(mem.split("a\nab\nabc\ncc", "\n"), 3);
-    testing.expectEqualStrings("abc", find(it, eql("abc")).?);
-    testing.expectEqualStrings("a", find(it, eql("a")).?);
-    testing.expectEqualStrings("ab", find(it, eql("ab")).?);
-    testing.expectEqualStrings("abc", find(it, eql("abc")).?);
-    testing.expectEqual(@as(?[]const u8, null), find(it, eql("cc")));
+    try testing.expectEqualStrings("abc", find(it, eql("abc")).?);
+    try testing.expectEqualStrings("a", find(it, eql("a")).?);
+    try testing.expectEqualStrings("ab", find(it, eql("ab")).?);
+    try testing.expectEqualStrings("abc", find(it, eql("abc")).?);
+    try testing.expectEqual(@as(?[]const u8, null), find(it, eql("cc")));
 }
