@@ -1031,7 +1031,7 @@ test "any" {
 
 pub fn collect(
     _it: anytype,
-    allocator: *mem.Allocator,
+    allocator: mem.Allocator,
 ) mem.Allocator.Error![]Result(@TypeOf(_it)) {
     var it = iterator(_it);
 
@@ -1039,7 +1039,7 @@ pub fn collect(
     errdefer res.deinit();
 
     if (@hasDecl(@TypeOf(it), "len_hint"))
-        try res.ensureCapacity(it.len_hint().min);
+        try res.ensureTotalCapacity(it.len_hint().min);
 
     while (it.next()) |item|
         try res.append(item);
