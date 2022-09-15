@@ -884,10 +884,10 @@ pub fn dedupEx(
     const Res = Result(@TypeOf(it));
     const Eql = Compare(@TypeOf(it));
     return dedupEx2(it, eql, struct {
-        fn eql(func: Eql, a: Res, b: Res) bool {
+        fn eql2(func: Eql, a: Res, b: Res) bool {
             return func(a, b);
         }
-    }.eql);
+    }.eql2);
 }
 
 /// Removes dublicates from consectutive identical results using
