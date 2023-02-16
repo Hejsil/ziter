@@ -81,20 +81,20 @@ test "slice" {
     try testing.expectEqual(@as(?*const u8, null), it3.next());
 }
 
-/// Given ?T, returns an iterator that first returns the payload (if any) and then null.
-pub fn optional(o: anytype) Iterator(@TypeOf(o)) {
-    return .{ .optional = o };
+/// Creates an iterator that contains one item.
+pub fn one(v: anytype) One(@TypeOf(v)) {
+    return .{ .item = v };
 }
 
-pub fn Optional(comptime _Item: type) type {
+pub fn One(comptime _Item: type) type {
     return struct {
-        optional: ?Item,
+        item: ?Item,
 
         pub const Item = _Item;
 
         pub fn next(it: *@This()) ?Item {
-            defer it.optional = null;
-            return it.optional;
+            defer it.item = null;
+            return it.item;
         }
 
         pub const next_back = next;
@@ -103,23 +103,33 @@ pub fn Optional(comptime _Item: type) type {
     };
 }
 
+test "one" {
+    try expectEqual(deref("a"), one(@as(u8, 'a')));
+    try expectEqualReverse(deref("a"), one(@as(u8, 'a')));
+}
+
+/// Given ?T, returns an iterator that first returns the payload (if any) and then null.
+pub fn optional(o: anytype) Iterator(@TypeOf(o)) {
+    return .{ .item = o };
+}
+
 test "optional" {
-    try expectEqual(slice("a").deref(), optional(@as(?u8, 'a')));
-    try expectEqual(slice("").deref(), optional(@as(?u8, null)));
-    try expectEqualReverse(slice("a").deref(), optional(@as(?u8, 'a')));
-    try expectEqualReverse(slice("").deref(), optional(@as(?u8, null)));
+    try expectEqual(deref("a"), optional(@as(?u8, 'a')));
+    try expectEqual(deref(""), optional(@as(?u8, null)));
+    try expectEqualReverse(deref("a"), optional(@as(?u8, 'a')));
+    try expectEqualReverse(deref(""), optional(@as(?u8, null)));
 }
 
 /// Given anyerror!T, returns an iterator that first returns the payload (if any) and then null.
 pub fn error_union(u: anytype) Iterator(@TypeOf(u)) {
-    return .{ .optional = u catch null };
+    return optional(u catch null);
 }
 
 test "error_union" {
-    try expectEqual(slice("a").deref(), error_union(@as(anyerror!u8, 'a')));
-    try expectEqual(slice("").deref(), error_union(@as(anyerror!u8, error.Oof)));
-    try expectEqualReverse(slice("a").deref(), error_union(@as(anyerror!u8, 'a')));
-    try expectEqualReverse(slice("").deref(), error_union(@as(anyerror!u8, error.Oof)));
+    try expectEqual(deref("a"), error_union(@as(anyerror!u8, 'a')));
+    try expectEqual(deref(""), error_union(@as(anyerror!u8, error.Oof)));
+    try expectEqualReverse(deref("a"), error_union(@as(anyerror!u8, 'a')));
+    try expectEqualReverse(deref(""), error_union(@as(anyerror!u8, error.Oof)));
 }
 
 /// Returns an iterator that gives all ints from `from` to `to`. Can be iterated backwards as well.
@@ -2031,8 +2041,8 @@ pub fn void_ctx(
 /// are as follows:
 /// ```
 /// *[N]T, []T -> ziter.Slice([]T)
-/// ?T         -> ziter.Optional(T)
-/// E!T        -> ziter.Optional(T)
+/// ?T         -> ziter.One(T)
+/// E!T        -> ziter.One(T)
 /// *Iterator  -> Iterator
 /// Iterator   -> Iterator
 /// ```
@@ -2063,8 +2073,8 @@ pub fn Iterator(comptime T: type) type {
             .Slice => Slice(ToSlice(T)),
             else => T,
         },
-        .Optional => |info| Optional(info.child),
-        .ErrorUnion => |info| Optional(info.payload),
+        .Optional => |info| One(info.child),
+        .ErrorUnion => |info| One(info.payload),
         else => T,
     };
 
