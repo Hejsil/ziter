@@ -205,7 +205,7 @@ test "empty" {
     try expectEqual(deref(""), empty(u8));
 }
 
-/// Given an iterator, this function will count how many items until `next` returns null.
+/// Counts the number of items `next` returns before `null`
 pub fn count(_it: anytype) usize {
     var result: usize = 0;
 
