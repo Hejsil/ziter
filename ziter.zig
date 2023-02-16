@@ -226,6 +226,19 @@ test "last" {
     try testing.expectEqual(@as(?*const u8, null), last(slice("")));
 }
 
+/// Given an iterator, this function will return the first item of the iterator.
+pub fn first(_it: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+    return nth(_it, 0);
+}
+
+test "first" {
+    const items = "abcd";
+    try testing.expectEqual(@as(?*const u8, &items[0]), slice(items).first());
+    try testing.expectEqual(@as(?*const u8, &items[0]), first(slice(items)));
+    try testing.expectEqual(@as(?*const u8, null), slice("").first());
+    try testing.expectEqual(@as(?*const u8, null), first(slice("")));
+}
+
 /// Given an iterator, this function will return the nth item of the iterator. This function is
 /// O(n) in worst case.
 pub fn nth(_it: anytype, n: usize) ?IteratorItem(Iterator(@TypeOf(_it))) {
@@ -289,11 +302,11 @@ test "step_by" {
 /// Creates an iterator that starts at `first` and continues on to `second` when `first` is
 /// empty. Can be iterated backwards as well, starting at `second` until empty. Then continuing
 /// to `first`. This requires that both iterators can be iterated backwards.
-pub fn chain(first: anytype, second: anytype) Chain(
-    Iterator(@TypeOf(first)),
-    Iterator(@TypeOf(second)),
+pub fn chain(first_it: anytype, second_it: anytype) Chain(
+    Iterator(@TypeOf(first_it)),
+    Iterator(@TypeOf(second_it)),
 ) {
-    return .{ .first = iterator(first), .second = iterator(second) };
+    return .{ .first = iterator(first_it), .second = iterator(second_it) };
 }
 
 pub fn Chain(comptime _First: type, comptime _Second: type) type {
@@ -318,14 +331,14 @@ pub fn Chain(comptime _First: type, comptime _Second: type) type {
 }
 
 test "chain" {
-    const first = deref("ab");
-    const second = deref("cd");
+    const first_it = deref("ab");
+    const second_it = deref("cd");
     const results = deref("abcd");
 
-    try expectEqual(results, chain(first, second));
-    try expectEqual(results, first.chain(second));
-    try expectEqualReverse(results, chain(first, second));
-    try expectEqualReverse(results, first.chain(second));
+    try expectEqual(results, chain(first_it, second_it));
+    try expectEqual(results, first_it.chain(second_it));
+    try expectEqualReverse(results, chain(first_it, second_it));
+    try expectEqualReverse(results, first_it.chain(second_it));
 }
 
 /// Creates an iterator that yields the items of both `a` and `b` when `next` is called. This
@@ -1385,8 +1398,8 @@ test "fold" {
 /// iterator is empty, then `null` is returned.
 pub fn reduce(_it: anytype, ctx: anytype, func: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
     var it = iterator(_it);
-    var first = it.next() orelse return null;
-    return fold(it, first, ctx, func);
+    const init = it.next() orelse return null;
+    return fold(it, init, ctx, func);
 }
 
 test "reduce" {
@@ -1419,8 +1432,8 @@ test "reduce" {
 /// Same as `reduce` but `func` is allowed to fail. If it fails, the `reduce` will fail as well.
 pub fn try_reduce(_it: anytype, ctx: anytype, func: anytype) !?IteratorItem(Iterator(@TypeOf(_it))) {
     var it = iterator(_it);
-    var first = it.next() orelse return null;
-    return try try_fold(it, first, ctx, func);
+    const init = it.next() orelse return null;
+    return try try_fold(it, init, ctx, func);
 }
 
 test "try_reduce" {
