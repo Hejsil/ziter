@@ -1491,6 +1491,28 @@ test "all" {
     try testing.expect(!deref("1bcd").all({}, void_ctx(std.ascii.isAlphabetic)));
 }
 
+/// Iterators the items of an iterator and checks if `predicate` returns `false` for all of them.
+/// If so, `true` is returned. If a call to `predicate` returns `true`, `none` returns `false`
+/// without iterating over the rest of the items.
+pub fn none(_it: anytype, ctx: anytype, predicate: anytype) bool {
+    var it = iterator(_it);
+    while (it.next()) |item| {
+        if (predicate(ctx, item))
+            return false;
+    }
+
+    return true;
+}
+
+test "none" {
+    try testing.expect(!none(deref("abcd"), {}, void_ctx(std.ascii.isAlphabetic)));
+    try testing.expect(!deref("abcd").none({}, void_ctx(std.ascii.isAlphabetic)));
+    try testing.expect(!none(deref("1bcd"), {}, void_ctx(std.ascii.isAlphabetic)));
+    try testing.expect(!deref("1bcd").none({}, void_ctx(std.ascii.isAlphabetic)));
+    try testing.expect(none(deref("1234"), {}, void_ctx(std.ascii.isAlphabetic)));
+    try testing.expect(deref("1234").none({}, void_ctx(std.ascii.isAlphabetic)));
+}
+
 /// Iterators the items of an iterator and checks if `predicate` returns `true` for any of them.
 /// If not, `false` is returned. If a call to `predicate` returns `true`, `any` returns `true`
 /// without iterating over the rest of the items.
