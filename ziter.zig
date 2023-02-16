@@ -1692,6 +1692,62 @@ test "cycle" {
     try expectEqual(deref("cdcdcdc"), take(reverse(cycle(deref("dc"))), 7));
 }
 
+/// Creates an iterator that deduplicates repeated items. An iterator that yields
+/// `0, 1, 1, 2, 2, 0` would, when wrapped by dedup, yield `0, 1, 2, 0`.
+pub fn dedup(_it: anytype, ctx: anytype, eq: *const fn (
+    @TypeOf(ctx),
+    IteratorItem(@TypeOf(_it)),
+    IteratorItem(@TypeOf(_it)),
+) bool) Dedup(Iterator(@TypeOf(_it)), @TypeOf(ctx)) {
+    return .{ .it = iterator(_it), .ctx = ctx, .eql = eq };
+}
+
+pub fn Dedup(comptime _It: type, comptime _Ctx: type) type {
+    return struct {
+        it: It,
+        ctx: Ctx,
+        eql: *const fn (Ctx, Item, Item) bool,
+        prev: ?Item = null,
+
+        pub const It = _It;
+        pub const Ctx = _Ctx;
+        pub const Item = IteratorItem(It);
+
+        pub fn next(it: *@This()) ?Item {
+            const prev = it.prev orelse {
+                it.prev = it.it.next();
+                return it.prev;
+            };
+
+            while (it.it.next()) |item| {
+                if (!it.eql(it.ctx, prev, item)) {
+                    it.prev = item;
+                    return item;
+                }
+            }
+
+            return null;
+        }
+    };
+}
+
+test "dedup" {
+    const eq = struct {
+        fn eq(_: void, a: u8, b: u8) bool {
+            return a == b;
+        }
+    }.eq;
+
+    try expectEqual(deref("abcd"), dedup(deref("aabccdd"), {}, eq));
+    try expectEqual(deref("abcd"), deref("aabccdd").dedup({}, eq));
+    try expectEqual(deref("a"), dedup(deref("aaaaa"), {}, eq));
+    try expectEqual(deref("a"), deref("aaaaa").dedup({}, eq));
+    try expectEqual(deref("a"), dedup(deref("a"), {}, eq));
+    try expectEqual(deref("a"), deref("a").dedup({}, eq));
+    try expectEqual(deref("aba"), dedup(deref("aabbaa"), {}, eq));
+    try expectEqual(deref("aba"), deref("aabbaa").dedup({}, eq));
+}
+
 pub fn is_empty(_it: anytype) bool {
     var it = iterator(_it);
     return it.next() == null;
