@@ -205,13 +205,13 @@ test "count" {
 
 /// Given an iterator, this function will return the last item of the iterator. If the iterator
 /// can be iterated backwards, then this function is O(1). If not, then it is O(n).
-pub fn last(_it: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn last(_it: anytype) ?IteratorItem(@TypeOf(_it)) {
     const It = Iterator(@TypeOf(_it));
     var it = iterator(_it);
     if (@hasDecl(It, "next_back"))
         return it.next_back();
 
-    var result: ?IteratorItem(Iterator(@TypeOf(_it))) = null;
+    var result: ?IteratorItem(@TypeOf(_it)) = null;
     while (it.next()) |item|
         result = item;
 
@@ -227,7 +227,7 @@ test "last" {
 }
 
 /// Given an iterator, this function will return the first item of the iterator.
-pub fn first(_it: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn first(_it: anytype) ?IteratorItem(@TypeOf(_it)) {
     return nth(_it, 0);
 }
 
@@ -241,7 +241,7 @@ test "first" {
 
 /// Given an iterator, this function will return the nth item of the iterator. This function is
 /// O(n) in worst case.
-pub fn nth(_it: anytype, n: usize) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn nth(_it: anytype, n: usize) ?IteratorItem(@TypeOf(_it)) {
     var curr: usize = 0;
 
     var it = iterator(_it);
@@ -388,7 +388,7 @@ test "zip" {
 /// returns `item, sep, item, ..., sep, item, null`.
 pub fn intersperse(
     _it: anytype,
-    separator: IteratorItem(Iterator(@TypeOf(_it))),
+    separator: IteratorItem(@TypeOf(_it)),
 ) Intersperse(Iterator(@TypeOf(_it))) {
     return .{ .it = iterator(_it).peekable(), .separator = separator };
 }
@@ -490,7 +490,7 @@ pub fn Filter(comptime _It: type, comptime _Ctx: type) type {
     return struct {
         it: It,
         ctx: Ctx,
-        predicate: *const fn (Ctx, IteratorItem(It)) bool,
+        predicate: *const fn (Ctx, Item) bool,
 
         pub const It = _It;
         pub const Ctx = _Ctx;
@@ -808,7 +808,7 @@ pub fn TakeWhile(comptime _It: type, comptime _Ctx: type) type {
     return struct {
         it: It,
         ctx: Ctx,
-        predicate: *const fn (Ctx, IteratorItem(It)) bool,
+        predicate: *const fn (Ctx, Item) bool,
         done: bool = false,
 
         pub const It = _It;
@@ -1396,7 +1396,7 @@ test "fold" {
 
 /// Same as `fold`, but the first item of the iterator is passed as the `init` argument. If the
 /// iterator is empty, then `null` is returned.
-pub fn reduce(_it: anytype, ctx: anytype, func: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn reduce(_it: anytype, ctx: anytype, func: anytype) ?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     const init = it.next() orelse return null;
     return fold(it, init, ctx, func);
@@ -1430,7 +1430,7 @@ test "reduce" {
 }
 
 /// Same as `reduce` but `func` is allowed to fail. If it fails, the `reduce` will fail as well.
-pub fn try_reduce(_it: anytype, ctx: anytype, func: anytype) !?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn try_reduce(_it: anytype, ctx: anytype, func: anytype) !?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     const init = it.next() orelse return null;
     return try try_fold(it, init, ctx, func);
@@ -1507,7 +1507,7 @@ test "any" {
 
 /// Iterators the items of an iterator and returns the first item where `predicate` returns `true`.
 /// `find` will only iterate up until it finds this item. If no item is found, `null` is returned.
-pub fn find(_it: anytype, ctx: anytype, predicate: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn find(_it: anytype, ctx: anytype, predicate: anytype) ?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     while (it.next()) |item| {
         if (predicate(ctx, item))
@@ -1546,7 +1546,7 @@ test "position" {
 
 /// Iterates an iterator to find the largest item in it. `null` is returned if the iterator is
 /// empty.
-pub fn max(_it: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn max(_it: anytype) ?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     var best = it.next() orelse return null;
     while (it.next()) |item|
@@ -1568,7 +1568,7 @@ test "max" {
 
 /// Iterates an iterator to find the smallest item in it. `null` is returned if the iterator is
 /// empty.
-pub fn min(_it: anytype) ?IteratorItem(Iterator(@TypeOf(_it))) {
+pub fn min(_it: anytype) ?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     var best = it.next() orelse return null;
     while (it.next()) |item|
@@ -1625,9 +1625,9 @@ test "reverse" {
 pub fn deref(_it: anytype) Map(
     Iterator(@TypeOf(_it)),
     void,
-    std.meta.Child(IteratorItem(Iterator(@TypeOf(_it)))),
+    std.meta.Child(IteratorItem(@TypeOf(_it))),
 ) {
-    const Item = IteratorItem(Iterator(@TypeOf(_it)));
+    const Item = IteratorItem(@TypeOf(_it));
     return map(_it, {}, struct {
         fn func(_: void, ptr: Item) std.meta.Child(Item) {
             return ptr.*;
@@ -1872,8 +1872,8 @@ test "greater_than_eql" {
 /// Returns true, if for all items it is true that `lt(ctx, items[n-1], items[n]) == true`
 pub fn is_sorted(_it: anytype, ctx: anytype, lt: *const fn (
     @TypeOf(ctx),
-    IteratorItem(Iterator(@TypeOf(_it))),
-    IteratorItem(Iterator(@TypeOf(_it))),
+    IteratorItem(@TypeOf(_it)),
+    IteratorItem(@TypeOf(_it)),
 ) bool) bool {
     var it = iterator(_it);
     var prev = it.next() orelse return true;
@@ -1975,7 +1975,8 @@ pub fn Iterator(comptime T: type) type {
 }
 
 /// Returns the type of the items an iterator returns.
-pub fn IteratorItem(comptime It: type) type {
+pub fn IteratorItem(comptime _It: type) type {
+    const It = Iterator(_It);
     typecheckIterator(It);
     return std.meta.Child(ReturnType(@TypeOf(It.next)));
 }
