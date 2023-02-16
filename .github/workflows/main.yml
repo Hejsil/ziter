@@ -2,9 +2,14 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
   test:
+    strategy:
+      matrix:
+        optimize: [Debug, ReleaseSafe, ReleaseFast, ReleaseSmall]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -13,7 +18,7 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v2.0.1
         with:
           version: master
-      - run: zig test ziter.zig
+      - run: zig build test -Doptimize=${{ matrix.optimize }}
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -22,3 +27,4 @@ jobs:
         with:
           version: master
       - run: zig fmt --check .
+
