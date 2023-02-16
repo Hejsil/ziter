@@ -185,6 +185,26 @@ test "range" {
     }
 }
 
+/// Creates an empty iterator.
+pub fn empty(comptime Item: type) Empty(Item) {
+    return .{};
+}
+
+pub fn Empty(comptime _Item: type) type {
+    return struct {
+        pub const Item = _Item;
+
+        pub fn next(_: @This()) ?Item {
+            return null;
+        }
+    };
+}
+
+test "empty" {
+    try expectEqual(slice(""), empty(*const u8));
+    try expectEqual(deref(""), empty(u8));
+}
+
 /// Given an iterator, this function will count how many items until `next` returns null.
 pub fn count(_it: anytype) usize {
     var result: usize = 0;
