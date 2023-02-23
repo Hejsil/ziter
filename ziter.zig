@@ -178,7 +178,7 @@ test "range" {
 
     const all_u8 = blk: {
         var items: [256]u8 = undefined;
-        for (items) |*item, i|
+        for (&items, 0..) |*item, i|
             item.* = @intCast(u8, i);
 
         std.debug.assert(items[0] == 0);
@@ -284,7 +284,7 @@ pub fn nth(_it: anytype, n: usize) ?IteratorItem(@TypeOf(_it)) {
 
 test "nth" {
     const items = "abcd";
-    for (items) |_, i| {
+    for (0..items.len) |i| {
         try testing.expectEqual(@as(?*const u8, &items[i]), slice(items).nth(i));
         try testing.expectEqual(@as(?*const u8, &items[i]), nth(slice(items), i));
     }
