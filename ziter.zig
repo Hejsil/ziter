@@ -5,10 +5,6 @@ const testing = std.testing;
 
 const ziter = @This();
 
-test {
-    _ = @import("example/examples.zig");
-}
-
 /// Given *[N]T or []T, returns an iterator that can iterate over all items in these types both
 /// forward and backwards. Items are iterated by pointer. If you want by value, see `deref`.
 pub fn slice(s: anytype) Slice(ToSlice(@TypeOf(s))) {

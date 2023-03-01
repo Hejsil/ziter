@@ -1,4 +1,4 @@
-const iter = @import("../ziter.zig");
+const iter = @import("ziter");
 const std = @import("std");
 
 test "ascii" {

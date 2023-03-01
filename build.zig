@@ -7,12 +7,21 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const test_step = b.step("test", "Run all tests in all modes.");
-    const tests = b.addTest(.{
+    const main_tests = b.addTest(.{
         .root_source_file = .{ .path = "ziter.zig" },
         .target = target,
         .optimize = optimize,
     });
-    test_step.dependOn(&tests.step);
+
+    const example_tests = b.addTest(.{
+        .root_source_file = .{ .path = "example/examples.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    example_tests.addAnonymousModule("ziter", .{ .source_file = .{ .path = "ziter.zig" } });
+
+    test_step.dependOn(&main_tests.step);
+    test_step.dependOn(&example_tests.step);
 
     const readme_step = b.step("readme", "Remake README.");
     const readme = readMeStep(b);
@@ -29,22 +38,13 @@ pub fn build(b: *std.Build) void {
 fn readMeStep(b: *std.Build) *std.Build.Step {
     const s = b.allocator.create(std.build.Step) catch unreachable;
     s.* = std.build.Step.init(.custom, "ReadMeStep", b.allocator, struct {
-        fn make(step: *std.build.Step) anyerror!void {
+        fn make(_: *std.build.Step) anyerror!void {
             @setEvalBranchQuota(10000);
-
-            const example = try std.mem.replaceOwned(
-                u8,
-                step.dependencies.allocator,
-                @embedFile("example/examples.zig"),
-                "../ziter.zig",
-                "ziter",
-            );
-            defer step.dependencies.allocator.free(example);
 
             const file = try std.fs.cwd().createFile("README.md", .{});
             const stream = file.writer();
             try stream.print(@embedFile("example/README.md.template"), .{
-                example,
+                @embedFile("example/examples.zig"),
             });
         }
     }.make);
