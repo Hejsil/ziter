@@ -20,8 +20,8 @@ pub fn build(b: *std.Build) void {
     });
     example_tests.addModule("ziter", module);
 
-    test_step.dependOn(&main_tests.step);
-    test_step.dependOn(&example_tests.step);
+    test_step.dependOn(&main_tests.run().step);
+    test_step.dependOn(&example_tests.run().step);
 
     const readme_step = b.step("readme", "Remake README.");
     const readme = readMeStep(b);
