@@ -12,16 +12,18 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const run_main_tests = b.addRunArtifact(main_tests);
 
     const example_tests = b.addTest(.{
         .root_source_file = .{ .path = "example/examples.zig" },
         .target = target,
         .optimize = optimize,
     });
+    const run_example_tests = b.addRunArtifact(example_tests);
     example_tests.addModule("ziter", module);
 
-    test_step.dependOn(&main_tests.run().step);
-    test_step.dependOn(&example_tests.run().step);
+    test_step.dependOn(&run_main_tests.step);
+    test_step.dependOn(&run_example_tests.step);
 
     const readme_step = b.step("readme", "Remake README.");
     const readme = readMeStep(b);
