@@ -1598,7 +1598,7 @@ pub fn max(_it: anytype) ?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     var best = it.next() orelse return null;
     while (it.next()) |item|
-        best = math.max(best, item);
+        best = @max(best, item);
 
     return best;
 }
@@ -1620,7 +1620,7 @@ pub fn min(_it: anytype) ?IteratorItem(@TypeOf(_it)) {
     var it = iterator(_it);
     var best = it.next() orelse return null;
     while (it.next()) |item|
-        best = math.min(best, item);
+        best = @min(best, item);
 
     return best;
 }
