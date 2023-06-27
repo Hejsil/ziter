@@ -149,7 +149,7 @@ pub fn Range(comptime _Item: type) type {
                 return null;
 
             defer it.from += 1;
-            return @intCast(Item, it.from);
+            return @intCast(it.from);
         }
 
         pub fn next_back(it: *@This()) ?Item {
@@ -157,7 +157,7 @@ pub fn Range(comptime _Item: type) type {
                 return null;
 
             defer it.to -= 1;
-            return @intCast(Item, it.to);
+            return @intCast(it.to);
         }
 
         pub usingnamespace ziter;
@@ -175,7 +175,7 @@ test "range" {
     const all_u8 = blk: {
         var items: [256]u8 = undefined;
         for (&items, 0..) |*item, i|
-            item.* = @intCast(u8, i);
+            item.* = @intCast(i);
 
         std.debug.assert(items[0] == 0);
         std.debug.assert(items[255] == 255);

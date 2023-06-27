@@ -42,5 +42,5 @@ pub const Fibonacci = struct {
 };
 
 fn to_u8(_: void, item: usize) u8 {
-    return @truncate(u8, item);
+    return @truncate(item);
 }
