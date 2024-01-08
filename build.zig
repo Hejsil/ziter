@@ -4,7 +4,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const module = b.addModule("ziter", .{ .source_file = .{ .path = "ziter.zig" } });
+    const module = b.addModule("ziter", .{ .root_source_file = .{ .path = "ziter.zig" } });
 
     const test_step = b.step("test", "Run all tests in all modes.");
     const main_tests = b.addTest(.{
@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const run_example_tests = b.addRunArtifact(example_tests);
-    example_tests.addModule("ziter", module);
+    example_tests.root_module.addImport("ziter", module);
 
     test_step.dependOn(&run_main_tests.step);
     test_step.dependOn(&run_example_tests.step);
@@ -38,13 +38,13 @@ pub fn build(b: *std.Build) void {
 }
 
 fn readMeStep(b: *std.Build) *std.Build.Step {
-    const s = b.allocator.create(std.build.Step) catch unreachable;
-    s.* = std.build.Step.init(.{
+    const s = b.allocator.create(std.Build.Step) catch unreachable;
+    s.* = std.Build.Step.init(.{
         .id = .custom,
         .name = "ReadMeStep",
         .owner = b,
         .makeFn = struct {
-            fn make(_: *std.build.Step, _: *std.Progress.Node) anyerror!void {
+            fn make(_: *std.Build.Step, _: *std.Progress.Node) anyerror!void {
                 @setEvalBranchQuota(10000);
                 const file = try std.fs.cwd().createFile("README.md", .{});
                 const stream = file.writer();
