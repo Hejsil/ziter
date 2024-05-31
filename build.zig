@@ -4,18 +4,18 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const module = b.addModule("ziter", .{ .root_source_file = .{ .path = "ziter.zig" } });
+    const module = b.addModule("ziter", .{ .root_source_file = b.path("ziter.zig") });
 
     const test_step = b.step("test", "Run all tests in all modes.");
     const main_tests = b.addTest(.{
-        .root_source_file = .{ .path = "ziter.zig" },
+        .root_source_file = b.path("ziter.zig"),
         .target = target,
         .optimize = optimize,
     });
     const run_main_tests = b.addRunArtifact(main_tests);
 
     const example_tests = b.addTest(.{
-        .root_source_file = .{ .path = "example/examples.zig" },
+        .root_source_file = b.path("example/examples.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -44,7 +44,7 @@ fn readMeStep(b: *std.Build) *std.Build.Step {
         .name = "ReadMeStep",
         .owner = b,
         .makeFn = struct {
-            fn make(_: *std.Build.Step, _: *std.Progress.Node) anyerror!void {
+            fn make(_: *std.Build.Step, _: std.Progress.Node) anyerror!void {
                 @setEvalBranchQuota(10000);
                 const file = try std.fs.cwd().createFile("README.md", .{});
                 const stream = file.writer();
