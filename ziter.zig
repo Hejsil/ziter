@@ -42,15 +42,15 @@ pub fn Slice(comptime _T: type) type {
 
 fn ToOnePtr(comptime T: type) type {
     var info = @typeInfo(T);
-    info.Pointer.child = std.meta.Elem(T);
-    info.Pointer.size = .One;
+    info.pointer.child = std.meta.Elem(T);
+    info.pointer.size = .One;
     return @Type(info);
 }
 
 fn ToSlice(comptime T: type) type {
     var info = @typeInfo(T);
-    info.Pointer.child = std.meta.Elem(T);
-    info.Pointer.size = .Slice;
+    info.pointer.child = std.meta.Elem(T);
+    info.pointer.size = .Slice;
     return @Type(info);
 }
 
@@ -186,7 +186,7 @@ test "range" {
 
     var i: u64 = 0;
     while (i < 100) : (i += 1) {
-        var random = std.rand.DefaultPrng.init(i);
+        var random = std.Random.DefaultPrng.init(i);
         try expectEqualRandomOrder(random.random(), deref(&all_u8), range(u8, 0, 255));
     }
 }
@@ -565,7 +565,7 @@ test "filter" {
 pub fn filter_map(_it: anytype, ctx: anytype, func: anytype) FilterMap(
     Iterator(@TypeOf(_it)),
     @TypeOf(ctx),
-    @typeInfo(ReturnType(@TypeOf(func))).Optional.child,
+    @typeInfo(ReturnType(@TypeOf(func))).optional.child,
 ) {
     return .{ .it = iterator(_it), .ctx = ctx, .func = func };
 }
@@ -873,7 +873,7 @@ test "take_while" {
 pub fn map_while(_it: anytype, ctx: anytype, func: anytype) MapWhile(
     Iterator(@TypeOf(_it)),
     @TypeOf(ctx),
-    @typeInfo(ReturnType(@TypeOf(func))).Optional.child,
+    @typeInfo(ReturnType(@TypeOf(func))).optional.child,
 ) {
     return .{ .it = iterator(_it), .ctx = ctx, .func = func };
 }
@@ -1067,7 +1067,7 @@ pub fn Flatten(comptime _It: type) type {
 test "flatten" {
     var i: u64 = 0;
     while (i < 100) : (i += 1) {
-        var random = std.rand.DefaultPrng.init(i);
+        var random = std.Random.DefaultPrng.init(i);
         try expectEqualRandomOrder(
             random.random(),
             deref("abcd"),
@@ -2044,16 +2044,16 @@ pub fn void_ctx(
 /// ```
 pub fn iterator(value: anytype) Iterator(@TypeOf(value)) {
     return switch (@typeInfo(@TypeOf(value))) {
-        .Pointer => |info| switch (info.size) {
+        .pointer => |info| switch (info.size) {
             .One => switch (@typeInfo(info.child)) {
-                .Array => slice(value),
+                .array => slice(value),
                 else => value.*,
             },
             .Slice => slice(value),
             else => value,
         },
-        .Optional => optional(value),
-        .ErrorUnion => error_union(value),
+        .optional => optional(value),
+        .error_union => error_union(value),
         else => value,
     };
 }
@@ -2061,16 +2061,16 @@ pub fn iterator(value: anytype) Iterator(@TypeOf(value)) {
 /// The return type of `iterator`
 pub fn Iterator(comptime T: type) type {
     const Res = switch (@typeInfo(T)) {
-        .Pointer => |info| switch (info.size) {
+        .pointer => |info| switch (info.size) {
             .One => switch (@typeInfo(info.child)) {
-                .Array => Slice(ToSlice(T)),
+                .array => Slice(ToSlice(T)),
                 else => info.child,
             },
             .Slice => Slice(ToSlice(T)),
             else => T,
         },
-        .Optional => |info| One(info.child),
-        .ErrorUnion => |info| One(info.payload),
+        .optional => |info| One(info.child),
+        .error_union => |info| One(info.payload),
         else => T,
     };
 
@@ -2114,8 +2114,8 @@ fn typecheckIterator(comptime It: type) void {
         ", found " ++ @typeName(NextFn);
 
     switch (@typeInfo(NextFn)) {
-        .Fn => |info| {
-            if (@typeInfo(info.return_type orelse void) != .Optional)
+        .@"fn" => |info| {
+            if (@typeInfo(info.return_type orelse void) != .optional)
                 @compileError(wrong_next_func);
             if (info.params.len != 1)
                 @compileError(wrong_next_func);
@@ -2161,7 +2161,7 @@ pub fn expectEqualReverse(expected_it: anytype, actual_it: anytype) !void {
 /// Same as `expectEqual` but randomly pick between forward and backwards iteration. Good for
 /// fuzzing backwards and forward iteration logic.
 pub fn expectEqualRandomOrder(
-    random: std.rand.Random,
+    random: std.Random,
     expected_it: anytype,
     actual_it: anytype,
 ) !void {
@@ -2183,8 +2183,8 @@ pub fn expectEqualRandomOrder(
 
 fn ReturnType(comptime F: type) type {
     return switch (@typeInfo(F)) {
-        .Fn => |info| info.return_type.?,
-        .Pointer => |info| switch (info.size) {
+        .@"fn" => |info| info.return_type.?,
+        .pointer => |info| switch (info.size) {
             .One => @typeInfo(info.child).Fn.return_type.?,
             else => unreachable,
         },
@@ -2194,8 +2194,8 @@ fn ReturnType(comptime F: type) type {
 
 fn ParamType(comptime F: type, comptime n: usize) type {
     return switch (@typeInfo(F)) {
-        .Fn => |info| info.params[n].type.?,
-        .Pointer => |info| switch (info.size) {
+        .@"fn" => |info| info.params[n].type.?,
+        .pointer => |info| switch (info.size) {
             .One => @typeInfo(info.child).Fn.params[n].type.?,
             else => unreachable,
         },
