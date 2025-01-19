@@ -43,14 +43,14 @@ pub fn Slice(comptime _T: type) type {
 fn ToOnePtr(comptime T: type) type {
     var info = @typeInfo(T);
     info.pointer.child = std.meta.Elem(T);
-    info.pointer.size = .One;
+    info.pointer.size = .one;
     return @Type(info);
 }
 
 fn ToSlice(comptime T: type) type {
     var info = @typeInfo(T);
     info.pointer.child = std.meta.Elem(T);
-    info.pointer.size = .Slice;
+    info.pointer.size = .slice;
     return @Type(info);
 }
 
@@ -2045,11 +2045,11 @@ pub fn void_ctx(
 pub fn iterator(value: anytype) Iterator(@TypeOf(value)) {
     return switch (@typeInfo(@TypeOf(value))) {
         .pointer => |info| switch (info.size) {
-            .One => switch (@typeInfo(info.child)) {
+            .one => switch (@typeInfo(info.child)) {
                 .array => slice(value),
                 else => value.*,
             },
-            .Slice => slice(value),
+            .slice => slice(value),
             else => value,
         },
         .optional => optional(value),
@@ -2062,11 +2062,11 @@ pub fn iterator(value: anytype) Iterator(@TypeOf(value)) {
 pub fn Iterator(comptime T: type) type {
     const Res = switch (@typeInfo(T)) {
         .pointer => |info| switch (info.size) {
-            .One => switch (@typeInfo(info.child)) {
+            .one => switch (@typeInfo(info.child)) {
                 .array => Slice(ToSlice(T)),
                 else => info.child,
             },
-            .Slice => Slice(ToSlice(T)),
+            .slice => Slice(ToSlice(T)),
             else => T,
         },
         .optional => |info| One(info.child),
