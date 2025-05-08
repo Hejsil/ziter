@@ -1,0 +1,14 @@
+.{
+    .name = .ziter,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0xc617f88478b2caa8,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "example",
+        "LICENSE",
+        "README.md",
+        "ziter.zig",
+    },
+}
